@@ -1,0 +1,13 @@
+# Cross-compiling for Windows from Linux; run scripts/build-windows.sh, which
+# also sets CFLAGS for whisper.cpp (AVX2/FMA + a MinGW header shim).
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc-posix"
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-args=-static -static-libgcc -static-libstdc++"]
+
+[env]
+CC_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-gcc-posix"
+CXX_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-g++-posix"
+AR_x86_64_pc_windows_gnu = "x86_64-w64-mingw32-ar"
+# ggml turns off its CPU-specific code when cross-compiling; without AVX2/FMA
+# recognition is several times slower (any x86-64 CPU from ~2015 on has them).
+CXXFLAGS_x86_64_pc_windows_gnu = "-march=haswell -mtune=generic"

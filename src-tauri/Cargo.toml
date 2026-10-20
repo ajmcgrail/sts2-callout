@@ -1,0 +1,40 @@
+[package]
+name = "sts2-callout"
+version = "0.1.0"
+description = "Listens to speaker output and flashes Slay the Spire 2 cards/relics that get mentioned"
+edition = "2021"
+
+[lib]
+name = "sts2_callout_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["macos-private-api"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+cpal = "0.18"
+whisper-rs = { version = "0.16", features = ["log_backend"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "json", "stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "time", "io-util"] }
+futures-util = "0.3"
+strsim = "0.11"
+parking_lot = "0.12"
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Monitor sources ("Monitor of ...") for capturing speaker output; works with PipeWire too.
+cpal = { version = "0.18", features = ["pulseaudio"] }
+
+[features]
+# GPU acceleration for whisper.cpp, e.g. `npm run tauri build -- --features metal`
+metal = ["whisper-rs/metal"]
+cuda = ["whisper-rs/cuda"]
+vulkan = ["whisper-rs/vulkan"]
+
+[profile.dev.package."*"]
+opt-level = 3

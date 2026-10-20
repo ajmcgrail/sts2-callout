@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StS2 Callout</title>
+    <link rel="stylesheet" href="/src/control.css" />
+  </head>
+  <body>
+    <header>
+      <h1>StS2 Callout</h1>
+      <span id="data-status" class="pill">Loading data…</span>
+      <button id="refresh" class="ghost" title="Download the card/relic data again">Re-download data</button>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>Listen</h2>
+        <div class="row">
+          <label>Audio source
+            <select id="device"><option value="">Automatic: system output</option></select>
+          </label>
+          <label>Speech model
+            <select id="model"></select>
+          </label>
+        </div>
+        <div class="row">
+          <button id="listen" class="primary">Start listening</button>
+          <div class="meter" title="Input level"><div id="level"></div></div>
+          <span id="listen-status" class="muted"></span>
+        </div>
+        <progress id="model-progress" hidden></progress>
+      </section>
+
+      <section class="panel grow">
+        <h2>Heard <button id="clear-log" class="ghost small">Clear</button></h2>
+        <ol id="log"></ol>
+      </section>
+
+      <section class="panel">
+        <h2>Try it</h2>
+        <div class="row">
+          <input id="simulate" placeholder="Type a sentence as if someone said it, e.g. “I'll take Bash and Akabeko”" />
+          <button id="simulate-go">Simulate</button>
+        </div>
+        <div class="row">
+          <input id="search" placeholder="Search cards and relics…" />
+        </div>
+        <ul id="results"></ul>
+      </section>
+
+      <details class="panel" id="settings-panel">
+        <summary><h2>Settings</h2></summary>
+        <form id="settings">
+          <div class="grid">
+            <label>Popup duration (s) <input name="display_secs" type="number" min="1" max="60" step="0.5" /></label>
+            <label>Don't repeat within (s) <input name="cooldown_secs" type="number" min="0" max="600" step="1" /></label>
+            <label>Max popups on screen <input name="max_onscreen" type="number" min="1" max="8" step="1" /></label>
+            <label>Overlay side
+              <select name="overlay_side"><option value="right">Right</option><option value="left">Left</option></select>
+            </label>
+            <label>Overlay scale <input name="overlay_scale" type="number" min="0.4" max="2" step="0.05" /></label>
+            <label title="Speech is split at pauses; nonstop talking is cut after this long.">Max phrase length (s) <input name="max_phrase_secs" type="number" min="2" max="20" step="0.5" /></label>
+            <label title="Speed vs. accuracy of the speech recognizer.">Recognition
+              <select name="accuracy">
+                <option value="fast">Fast</option>
+                <option value="balanced">Balanced</option>
+                <option value="best">Best (slowest)</option>
+              </select>
+            </label>
+            <label>Silence threshold <input name="silence_threshold" type="number" min="0" max="0.2" step="0.001" /></label>
+            <label>Prefer character for Strike/Defend
+              <select name="preferred_character">
+                <option value="">Any</option><option value="ironclad">Ironclad</option><option value="silent">Silent</option>
+                <option value="defect">Defect</option><option value="necrobinder">Necrobinder</option><option value="regent">Regent</option>
+              </select>
+            </label>
+            <label>Ignore 1-word names shorter than <input name="min_single_word_len" type="number" min="0" max="12" step="1" /></label>
+          </div>
+          <div class="row checks">
+            <label><input name="show_cards" type="checkbox" /> Cards</label>
+            <label><input name="show_relics" type="checkbox" /> Relics</label>
+            <label><input name="fuzzy" type="checkbox" /> Fuzzy matching (catches misheard names)</label>
+            <label title="Use a voice-activity model to send whole phrases to the recognizer instead of fixed slices."><input name="use_vad" type="checkbox" /> Split speech at pauses</label>
+          </div>
+          <label class="block">Never show these names (one per line)
+            <textarea name="ignored_names" rows="3" placeholder="Strike&#10;Defend"></textarea>
+          </label>
+          <div class="row"><button class="primary" type="submit">Save settings</button><span id="saved" class="muted"></span></div>
+        </form>
+      </details>
+    </main>
+
+    <footer>
+      Card &amp; relic data and images from <a href="https://spire-codex.com" target="_blank" rel="noreferrer">Spire Codex</a>,
+      downloaded once and cached in <code id="cache-dir"></code>. Slay the Spire 2 © Mega Crit.
+    </footer>
+    <script type="module" src="/src/control.ts"></script>
+  </body>
+</html>
