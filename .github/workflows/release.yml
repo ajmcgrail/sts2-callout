@@ -1,15 +1,23 @@
-# Push a tag like v0.2.0 to build installers for every platform into a draft release.
+# Builds installers for every platform into a draft GitHub release.
+# Start it by pushing a tag like v0.2.0, or from the Actions tab
+# ("Run workflow") with the tag to create. Tags with a "-" (v0.2.0-rc.1)
+# become pre-releases, for testing.
 name: Release
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to create, e.g. v0.2.0 or v0.2.0-rc.1
+        required: true
 
 permissions:
   contents: write
 
 env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
   # Portable whisper.cpp builds: don't tune for the CI machine's CPU.
   GGML_NATIVE: 'OFF'
 
@@ -59,11 +67,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: StS2 Callout ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: StS2 Callout ${{ env.RELEASE_TAG }}
           releaseDraft: true
           # v1.2.3-rc.1 style tags are test builds
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           releaseBody: |
             ## Downloads
 
@@ -86,4 +94,4 @@ jobs:
           New-Item -ItemType Directory -Force StS2-Callout-windows | Out-Null
           Copy-Item src-tauri/target/release/sts2-callout.exe "StS2-Callout-windows/StS2 Callout.exe"
           Compress-Archive -Path StS2-Callout-windows -DestinationPath StS2-Callout-windows-portable.zip -Force
-          gh release upload "${{ github.ref_name }}" StS2-Callout-windows-portable.zip --clobber --repo ${{ github.repository }}
+          gh release upload "$env:RELEASE_TAG" StS2-Callout-windows-portable.zip --clobber --repo ${{ github.repository }}
