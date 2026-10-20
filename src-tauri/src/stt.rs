@@ -610,7 +610,7 @@ mod vad_stream {
     fn streaming_phrases() {
         let (Ok(model), Ok(audio)) = (std::env::var("STS2_VAD"), std::env::var("STS2_AUDIO")) else { return };
         let bytes = std::fs::read(audio).unwrap();
-        let audio: Vec<f32> = bytes.chunks_exact(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
+        let audio: Vec<f32> = bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
         let mut vad = WhisperVadContext::new(&model, WhisperVadContextParams::default()).unwrap();
         let mut seg = Segmenter::default();
         let mut fed = 0;

@@ -27,7 +27,7 @@ jobs:
             x86: false
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Portable x86 CPU baseline (AVX2/FMA/F16C)
         if: matrix.x86
         shell: bash
@@ -36,12 +36,16 @@ jobs:
           echo "GGML_AVX2=ON" >> "$GITHUB_ENV"
           echo "GGML_FMA=ON" >> "$GITHUB_ENV"
           echo "GGML_F16C=ON" >> "$GITHUB_ENV"
+      - name: Static C runtime on Windows (no VC++ redistributable needed)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "RUSTFLAGS=-C target-feature=+crt-static" >> "$GITHUB_ENV"
       - name: Linux dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev cmake clang
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -51,10 +55,35 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: StS2 Callout ${{ github.ref_name }}
-          releaseBody: See the README for setup. Windows users can use the .msi/.exe installer.
           releaseDraft: true
+          # v1.2.3-rc.1 style tags are test builds
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          releaseBody: |
+            ## Downloads
+
+            | System | File |
+            |---|---|
+            | **Windows** (installer) | `StS2.Callout_*_x64-setup.exe` |
+            | **Windows** (portable, no install) | `StS2-Callout-windows-portable.zip` |
+            | **Linux** (any distro) | `StS2.Callout_*_amd64.AppImage` (`chmod +x`, then run) |
+            | **Linux** (Debian/Ubuntu) | `StS2.Callout_*_amd64.deb` |
+            | **macOS** 14.6+ (Apple Silicon) | `StS2.Callout_*_aarch64.dmg` |
+
+            The builds aren't code-signed: on Windows click **More info → Run anyway**; on macOS right-click → **Open**.
+            The first **Start listening** downloads the speech model (~180 MB). See the [README](https://github.com/${{ github.repository }}#readme) for setup and troubleshooting.
+      - name: Attach portable Windows zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          New-Item -ItemType Directory -Force StS2-Callout-windows | Out-Null
+          Copy-Item src-tauri/target/release/sts2-callout.exe "StS2-Callout-windows/StS2 Callout.exe"
+          Compress-Archive -Path StS2-Callout-windows -DestinationPath StS2-Callout-windows-portable.zip -Force
+          gh release upload "${{ github.ref_name }}" StS2-Callout-windows-portable.zip --clobber --repo ${{ github.repository }}

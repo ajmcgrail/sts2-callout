@@ -6,7 +6,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let (model, file) = (args.next().unwrap(), args.next().unwrap());
     let bytes = std::fs::read(file).unwrap();
-    let audio: Vec<f32> = bytes.chunks_exact(4).map(|b| f32::from_le_bytes(b.try_into().unwrap())).collect();
+    let audio: Vec<f32> = bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
     let mut ctx = WhisperVadContext::new(&model, WhisperVadContextParams::default()).unwrap();
     ctx.detect_speech(&audio).unwrap();
     let probs = ctx.probabilities();
