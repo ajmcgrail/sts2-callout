@@ -102,6 +102,12 @@ struct Transcript {
 /// Mean word probability below which a phrase gets a second decode.
 const RETRY_BELOW: f32 = 0.6;
 
+/// ggml abort callback; `user_data` points at the listener's stop flag.
+unsafe extern "C" fn abort_requested(user_data: *mut std::ffi::c_void) -> bool {
+    // SAFETY: set by `decode` to an `AtomicBool` that outlives the decode.
+    unsafe { (*(user_data as *const AtomicBool)).load(Ordering::Relaxed) }
+}
+
 /// Run whisper; returns the text (annotations removed) and its mean token probability.
 fn decode(
     wstate: &mut WhisperState,
@@ -112,8 +118,13 @@ fn decode(
 ) -> Option<(String, f32)> {
     let mut params = whisper_params(thread_count(), audio.len(), accuracy, beam);
     // Lets Stop interrupt a decode in progress (seconds long with big models).
-    let abort = stop.clone();
-    params.set_abort_callback_safe(move || abort.load(Ordering::Relaxed));
+    // whisper-rs 0.16's `set_abort_callback_safe` casts its boxed closure back
+    // to the wrong type (random aborts, and a leak per call), so use the raw API.
+    // SAFETY: `stop` is an Arc that outlives this `full()` call.
+    unsafe {
+        params.set_abort_callback(Some(abort_requested));
+        params.set_abort_callback_user_data(Arc::as_ptr(stop) as *mut std::ffi::c_void);
+    }
     if let Err(e) = wstate.full(params, audio) {
         if !stop.load(Ordering::Relaxed) {
             log::warn!("whisper failed on phrase: {e}");
@@ -625,5 +636,26 @@ mod vad_stream {
                     speech.iter().map(|(a, b)| (*a as f32 / RATE as f32, *b as f32 / RATE as f32)).collect::<Vec<_>>());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod abort_callback {
+    //! `STS2_MODEL=<ggml model> cargo test abort_callback -- --nocapture`
+    use super::*;
+
+    #[test]
+    fn aborts_only_when_asked() {
+        let Ok(model) = std::env::var("STS2_MODEL") else { return };
+        let ctx = WhisperContext::new_with_params(&model, WhisperContextParameters::default()).unwrap();
+        let mut state = ctx.create_state().unwrap();
+        let audio: Vec<f32> = (0..6 * RATE).map(|i| ((i * 7919 % 1000) as f32 / 1000.0 - 0.5) * 0.2).collect();
+        let stop = Arc::new(AtomicBool::new(false));
+        for i in 0..8 {
+            let mode = ["fast", "balanced"][i % 2];
+            assert!(decode(&mut state, &audio, mode, false, &stop).is_some(), "spurious abort on run {i}");
+        }
+        stop.store(true, Ordering::Relaxed);
+        assert!(decode(&mut state, &audio, "fast", false, &stop).is_none(), "stop flag ignored");
     }
 }
