@@ -185,7 +185,7 @@ npm run tauri build -- --features metal    # Apple Silicon
 
 `npm run tauri build` tunes whisper.cpp for *your* CPU. To build a binary you'll share, set `GGML_NATIVE=OFF GGML_AVX=ON GGML_AVX2=ON GGML_FMA=ON GGML_F16C=ON` first, as the release workflow does.
 
-**Releases:** `.github/workflows/release.yml` builds Windows, macOS and Linux installers into a draft GitHub release. Start it by pushing a tag like `v0.2.0`, or from the **Actions** tab (**Release → Run workflow**) by entering the tag. Tags containing a `-` (like `v0.2.0-rc.1`) become pre-releases for testing.
+**Releases:** `.github/workflows/release.yml` builds Windows, macOS and Linux installers into a draft GitHub release. Start it by pushing a tag like `v0.2.0`, or from the **Actions** tab (**Release → Run workflow**) by entering the tag. Tags containing a `-` (like `v0.2.0-rc.1`) stay as draft pre-releases for testing. Other tags are published automatically once every platform has built.
 
 **Cross-compiling for Windows from Linux:**
 

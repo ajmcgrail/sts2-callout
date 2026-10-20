@@ -95,3 +95,18 @@ jobs:
           Copy-Item src-tauri/target/release/sts2-callout.exe "StS2-Callout-windows/StS2 Callout.exe"
           Compress-Archive -Path StS2-Callout-windows -DestinationPath StS2-Callout-windows-portable.zip -Force
           gh release upload "$env:RELEASE_TAG" StS2-Callout-windows-portable.zip --clobber --repo ${{ github.repository }}
+
+  # Real releases (no "-" in the tag) are published once every platform built.
+  # Test releases stay as drafts for you to check and delete.
+  publish:
+    needs: build
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh api "repos/${{ github.repository }}/releases" --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | .id" | head -1)
+          test -n "$id" || { echo "no release for $RELEASE_TAG"; exit 1; }
+          gh api -X PATCH "repos/${{ github.repository }}/releases/$id" -F draft=false -f make_latest=true --jq '.html_url'
