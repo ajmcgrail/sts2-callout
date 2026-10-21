@@ -22,18 +22,31 @@ Speech recognition runs entirely on your machine with [whisper.cpp](https://gith
 
 ## Getting started
 
-### Windows
+Download the latest version from the **[Releases page](https://github.com/ajmcgrail/sts2-callout/releases/latest)**.
 
-1. Download the latest `StS2-Callout-windows.zip` from the [Releases page](../../releases), or [build it yourself](#building-from-source).
-2. Unzip it anywhere and run **`StS2 Callout.exe`**. Keep the `.dll` files next to it.
-   - The exe isn't code-signed, so SmartScreen may warn you: click **More info → Run anyway**.
-   - It needs the Microsoft Edge WebView2 runtime, which comes with Windows 11 and up-to-date Windows 10.
-3. Click **Start listening**. The first time, this downloads the speech model (about 180 MB) and a 1 MB voice-activity model.
-4. Play a stream or video. Cards and relics appear on the right side of your main screen as they're mentioned.
+### Windows 10/11
 
-### macOS and Linux
+1. Download **`StS2.Callout_x.y.z_x64-setup.exe`** (installer), or **`StS2-Callout-windows-portable.zip`** (no install: unzip and run `StS2 Callout.exe`).
+2. The app isn't code-signed, so SmartScreen may warn you: click **More info → Run anyway**.
+3. It needs the Microsoft Edge WebView2 runtime, which comes with Windows 11 and up-to-date Windows 10. The installer adds it if it's missing.
 
-Build from source (below). On macOS, allow *System Audio Recording* when asked.
+### Linux (x86-64)
+
+- **Any distro:** download **`StS2.Callout_x.y.z_amd64.AppImage`**, run `chmod +x StS2.Callout_*.AppImage`, then run it.
+- **Debian/Ubuntu:** `sudo apt install ./StS2.Callout_x.y.z_amd64.deb`
+- **Fedora/openSUSE:** the `.rpm`
+
+It listens to the "Monitor of …" source of your speakers through PulseAudio or PipeWire. For a transparent overlay, use a compositing desktop (GNOME and KDE are).
+
+### macOS 14.6+ (Apple Silicon)
+
+Download the `.dmg`. The app isn't notarized, so right-click it → **Open** the first time, then allow *System Audio Recording* when asked.
+
+### First run
+
+1. Start the app. The control panel opens, and the card and relic data downloads once.
+2. Click **Start listening**. The first time, this downloads the speech model (about 180 MB) and a 1 MB voice-activity model.
+3. Play a stream or video. Cards and relics appear on the right side of your main screen as they're mentioned.
 
 ## Using it
 
