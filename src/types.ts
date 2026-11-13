@@ -1,4 +1,4 @@
-export type Kind = "card" | "relic";
+export type Kind = "card" | "relic" | "monster";
 
 export interface Card {
   id: string;
@@ -27,12 +27,58 @@ export interface Relic {
   pool: string;
 }
 
+export interface MonsterDamage {
+  normal?: number | null;
+  ascension?: number | null;
+  hit_count?: number | null;
+  hit_count_ascension?: number | null;
+}
+
+export interface MonsterPower {
+  power_id: string;
+  amount?: number | null;
+  target?: string | null;
+}
+
+export interface MonsterMove {
+  id: string;
+  name: string;
+  intent: string;
+  damage?: MonsterDamage | null;
+  block?: number | null;
+  heal?: number | null;
+  powers?: MonsterPower[] | null;
+}
+
+export interface PatternState {
+  id: string;
+  type: "move" | "random" | "conditional" | string;
+  move_id?: string;
+  next?: string;
+  branches?: { move_id: string; weight?: number; repeat?: string; condition?: string }[];
+}
+
+export interface Monster {
+  id: string;
+  name: string;
+  type: string;
+  min_hp?: number | null;
+  max_hp?: number | null;
+  min_hp_ascension?: number | null;
+  max_hp_ascension?: number | null;
+  moves: MonsterMove[];
+  innate_powers?: { power_id: string; amount?: number | null }[] | null;
+  encounters?: { encounter_name?: string; room_type?: string; act?: string | null }[] | null;
+  attack_pattern?: { type?: string; initial_move?: string | null; states?: PatternState[]; description?: string } | null;
+}
+
 export interface ShowPayload {
   kind: Kind;
   id: string;
   heard: string;
   card: Card | null;
   relic: Relic | null;
+  monster: Monster | null;
   display_secs: number;
   max_onscreen: number;
   scale: number;
@@ -58,6 +104,7 @@ export interface Settings {
   fuzzy: boolean;
   show_cards: boolean;
   show_relics: boolean;
+  show_monsters: boolean;
   data_channel: "stable" | "beta";
 }
 
@@ -102,7 +149,7 @@ export interface SearchHit {
 }
 
 /** URL of a locally cached image (served by the Rust `stsimg` protocol). */
-export function imageUrl(kind: "card" | "card_upg" | "card_art" | "relic", id: string): string {
+export function imageUrl(kind: "card" | "card_upg" | "card_art" | "relic" | "monster", id: string): string {
   const base = navigator.userAgent.includes("Windows") ? "http://stsimg.localhost" : "stsimg://localhost";
   return `${base}/${kind}/${encodeURIComponent(id)}`;
 }

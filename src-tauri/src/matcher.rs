@@ -16,6 +16,7 @@ use crate::settings::Settings;
 pub enum Kind {
     Card,
     Relic,
+    Monster,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
@@ -147,6 +148,11 @@ impl Matcher {
         // normalized name -> candidates
         let mut groups: HashMap<String, Vec<(Kind, Rank, String)>> = HashMap::new();
         let mut add = |name: &str, kind: Kind, owner: &str, order: i64, id: &str| {
+            // "Anchor???", "The Merchant???": hidden/placeholder variants. Relics
+            // all have a normal version, and "the merchant" is everyday talk.
+            if name.contains("???") {
+                return;
+            }
             let key = normalize(name);
             if key.is_empty() || ignored.contains(&key) {
                 return;
@@ -169,6 +175,15 @@ impl Matcher {
         if settings.show_relics {
             for r in &data.relics {
                 add(&r.name, Kind::Relic, &r.pool.to_lowercase(), r.compendium_order, &r.id);
+            }
+        }
+        if settings.show_monsters {
+            for (i, m) in data.monsters.iter().enumerate() {
+                add(&m.name, Kind::Monster, "", i as i64, &m.id);
+                // "Leaf Slime (M)", "Bowlbug (Rock)": people just say "leaf slime".
+                if let Some((base, _)) = m.name.split_once(" (") {
+                    add(base, Kind::Monster, "", i as i64, &m.id);
+                }
             }
         }
 
@@ -351,6 +366,22 @@ mod tests {
     }
 
     #[test]
+    fn enemies_by_name_and_base_name() {
+        let mut d = data();
+        let monster = |id: &str, name: &str| crate::data::Monster { id: id.into(), name: name.into(), ..Default::default() };
+        d.monsters = vec![monster("LEAF_SLIME_M", "Leaf Slime (M)"), monster("LEAF_SLIME_S", "Leaf Slime (S)"), monster("JAW_WORM", "Jaw Worm")];
+        let m = Matcher::new(&d, &Settings::default());
+        let r = m.find("watch out for the jaw worm and that leaf slime");
+        assert_eq!(ids(&r), ["JAW_WORM", "LEAF_SLIME_M"]);
+        assert_eq!(r[0].item.kind, Kind::Monster);
+        assert_eq!(ids(&m.find("a leaf slime s")), ["LEAF_SLIME_S"]);
+        d.monsters.push(monster("FAKE_MERCHANT_MONSTER", "The Merchant???"));
+        assert!(Matcher::new(&d, &Settings::default()).find("anything at the merchant").is_empty());
+        let off = Matcher::new(&d, &Settings { show_monsters: false, ..Settings::default() });
+        assert!(off.find("jaw worm").is_empty());
+    }
+
+    #[test]
     fn settings_respected() {
         let s = Settings {
             preferred_character: "silent".into(),
@@ -374,6 +405,7 @@ mod real_data {
         let data = GameData {
             cards: serde_json::from_slice(&std::fs::read(dir.join("cards.json")).unwrap()).unwrap(),
             relics: serde_json::from_slice(&std::fs::read(dir.join("relics.json")).unwrap()).unwrap(),
+            monsters: std::fs::read(dir.join("monsters.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default(),
             ..Default::default()
         };
         let m = Matcher::new(&data, &Settings::default());

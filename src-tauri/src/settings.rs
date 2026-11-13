@@ -32,6 +32,7 @@ pub struct Settings {
     pub fuzzy: bool,
     pub show_cards: bool,
     pub show_relics: bool,
+    pub show_monsters: bool,
     /// "stable" or "beta": which game branch's cards and relics to use.
     pub data_channel: String,
 }
@@ -56,6 +57,7 @@ impl Default for Settings {
             fuzzy: true,
             show_cards: true,
             show_relics: true,
+            show_monsters: true,
             data_channel: "stable".into(),
         }
     }

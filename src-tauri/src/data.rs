@@ -2,7 +2,7 @@
 //! (https://spire-codex.com) and cached on disk together with every image.
 //!
 //! Layout of the cache directory:
-//!   data/cards.json, data/relics.json   raw API responses
+//!   data/{cards,relics,monsters}.json   raw API responses
 //!   data/meta.json                      when/where the data came from
 //!   images/<kind>/<ID>.<ext>            downloaded images
 //!   images/<kind>/<ID>.missing          marker: the server had no such image
@@ -61,6 +61,21 @@ pub struct Relic {
     pub compendium_order: i64,
 }
 
+/// An enemy. Only the fields the app itself needs are typed; everything else
+/// (HP, moves, intents, powers, encounters, attack pattern) is kept as-is and
+/// handed to the overlay.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Monster {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    #[serde(flatten)]
+    pub rest: serde_json::Map<String, serde_json::Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Meta {
@@ -107,11 +122,12 @@ impl Channel {
 pub struct GameData {
     pub cards: Vec<Card>,
     pub relics: Vec<Relic>,
+    pub monsters: Vec<Monster>,
     pub meta: Meta,
     pub channel: Channel,
     /// Beta only: stable art/icon URLs by "kind:id", tried when a beta image is missing.
     pub stable_images: HashMap<String, String>,
-    /// Beta only: ids of cards and relics that aren't in the stable game yet.
+    /// Beta only: ids of cards, relics and enemies that aren't in the stable game yet.
     pub beta_only: HashSet<String>,
 }
 
@@ -121,6 +137,9 @@ impl GameData {
     }
     pub fn relic(&self, id: &str) -> Option<&Relic> {
         self.relics.iter().find(|r| r.id == id)
+    }
+    pub fn monster(&self, id: &str) -> Option<&Monster> {
+        self.monsters.iter().find(|m| m.id == id)
     }
 
     /// Remote URLs to try, in order, for an image served by our `stsimg://`
@@ -133,6 +152,7 @@ impl GameData {
             ImageKind::CardUpg => self.card(id).and_then(|c| c.image_url_card_upg.clone()),
             ImageKind::CardArt => self.card(id).and_then(|c| c.image_url.clone()),
             ImageKind::Relic => self.relic(id).and_then(|r| r.image_url.clone()),
+            ImageKind::Monster => self.monster(id).and_then(|m| m.image_url.clone()),
         };
         let mut urls: Vec<String> = own.iter().map(|u| absolute_url(u)).collect();
         if let Some(stable) = self.stable_images.get(&format!("{}:{id}", kind.dir())) {
@@ -161,6 +181,9 @@ impl GameData {
         for r in &self.relics {
             out.push((ImageKind::Relic, r.id.clone()));
         }
+        for m in &self.monsters {
+            out.push((ImageKind::Monster, m.id.clone()));
+        }
         out
     }
 }
@@ -171,6 +194,7 @@ pub enum ImageKind {
     CardUpg,
     CardArt,
     Relic,
+    Monster,
 }
 
 impl ImageKind {
@@ -180,6 +204,7 @@ impl ImageKind {
             "card_upg" => Self::CardUpg,
             "card_art" => Self::CardArt,
             "relic" => Self::Relic,
+            "monster" => Self::Monster,
             _ => return None,
         })
     }
@@ -189,6 +214,7 @@ impl ImageKind {
             Self::CardUpg => "card_upg",
             Self::CardArt => "card_art",
             Self::Relic => "relic",
+            Self::Monster => "monster",
         }
     }
 }
@@ -230,13 +256,24 @@ pub async fn load_or_fetch(client: &reqwest::Client, cache: &Path, channel: Chan
                         data.stable_images.insert(format!("relic:{}", r.id), u.clone());
                     }
                 }
-                let known: HashSet<&str> =
-                    stable.cards.iter().map(|c| c.id.as_str()).chain(stable.relics.iter().map(|r| r.id.as_str())).collect();
+                for m in &stable.monsters {
+                    if let Some(u) = &m.image_url {
+                        data.stable_images.insert(format!("monster:{}", m.id), u.clone());
+                    }
+                }
+                let known: HashSet<&str> = stable
+                    .cards
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .chain(stable.relics.iter().map(|r| r.id.as_str()))
+                    .chain(stable.monsters.iter().map(|m| m.id.as_str()))
+                    .collect();
                 data.beta_only = data
                     .cards
                     .iter()
                     .map(|c| c.id.as_str())
                     .chain(data.relics.iter().map(|r| r.id.as_str()))
+                    .chain(data.monsters.iter().map(|m| m.id.as_str()))
                     .filter(|id| !known.contains(id))
                     .map(str::to_string)
                     .collect();
@@ -252,20 +289,26 @@ async fn load_channel(client: &reqwest::Client, cache: &Path, channel: Channel, 
     let cards_path = dir.join("cards.json");
     let relics_path = dir.join("relics.json");
     let meta_path = dir.join("meta.json");
+    let monsters_path = dir.join("monsters.json");
+    let base = api_base();
+    let query = match channel {
+        Channel::Stable => "lang=eng",
+        Channel::Beta => "lang=eng&channel=beta",
+    };
 
     if !force && cards_path.exists() && relics_path.exists() {
-        if let Ok(data) = read_cached(&cards_path, &relics_path, &meta_path, channel) {
+        if let Ok(mut data) = read_cached(&cards_path, &relics_path, &meta_path, channel) {
+            // Caches from before enemies were supported: fetch just those, once.
+            if !monsters_path.exists() {
+                fetch_monsters(client, &base, query, &monsters_path).await;
+                data.monsters = read_monsters(&monsters_path);
+            }
             return Ok(data);
         }
         log::warn!("cached {channel:?} data unreadable, refetching");
     }
 
     tokio::fs::create_dir_all(&dir).await?;
-    let base = api_base();
-    let query = match channel {
-        Channel::Stable => "lang=eng",
-        Channel::Beta => "lang=eng&channel=beta",
-    };
     let cards_raw = fetch_text(client, &format!("{base}/api/cards?{query}")).await?;
     let relics_raw = fetch_text(client, &format!("{base}/api/relics?{query}")).await?;
     // Validate before overwriting a good cache.
@@ -281,12 +324,13 @@ async fn load_channel(client: &reqwest::Client, cache: &Path, channel: Channel, 
     };
     let meta = Meta {
         fetched_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
-        source: base,
+        source: base.clone(),
         version,
     };
     write_atomic(&cards_path, cards_raw.as_bytes()).await?;
     write_atomic(&relics_path, relics_raw.as_bytes()).await?;
     write_atomic(&meta_path, serde_json::to_vec_pretty(&meta)?.as_slice()).await?;
+    fetch_monsters(client, &base, query, &monsters_path).await;
     if force {
         // New game data: card renders show its numbers, so refetch every image.
         let _ = tokio::fs::remove_dir_all(cache.join(channel.images_dir())).await;
@@ -294,14 +338,33 @@ async fn load_channel(client: &reqwest::Client, cache: &Path, channel: Channel, 
     read_cached(&cards_path, &relics_path, &meta_path, channel)
 }
 
-fn read_cached(cards: &Path, relics: &Path, meta: &Path, channel: Channel) -> Result<GameData> {
-    let cards: Vec<Card> = serde_json::from_slice(&std::fs::read(cards)?)?;
+fn read_cached(cards_path: &Path, relics: &Path, meta: &Path, channel: Channel) -> Result<GameData> {
+    let cards: Vec<Card> = serde_json::from_slice(&std::fs::read(cards_path)?)?;
     let relics: Vec<Relic> = serde_json::from_slice(&std::fs::read(relics)?)?;
     let meta = std::fs::read(meta)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    Ok(GameData { cards, relics, meta, channel, stable_images: HashMap::new(), beta_only: HashSet::new() })
+    let monsters = read_monsters(&cards_path.with_file_name("monsters.json"));
+    Ok(GameData { cards, relics, monsters, meta, channel, ..Default::default() })
+}
+
+fn read_monsters(path: &Path) -> Vec<Monster> {
+    std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+/// Enemies are optional: if they can't be fetched, cards and relics still
+/// work, and the next launch tries again (no file is written).
+async fn fetch_monsters(client: &reqwest::Client, base: &str, query: &str, path: &Path) {
+    let result = async {
+        let raw = fetch_text(client, &format!("{base}/api/monsters?{query}")).await?;
+        serde_json::from_str::<Vec<Monster>>(&raw).context("unexpected /api/monsters response")?;
+        write_atomic(path, raw.as_bytes()).await
+    }
+    .await;
+    if let Err(e) = result {
+        log::warn!("enemy data unavailable: {e:#}");
+    }
 }
 
 async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {

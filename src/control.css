@@ -61,6 +61,7 @@ mark { background: var(--gold); color: #1b1310; border-radius: 3px; padding: 0 2
 .tag { font-size: 10px; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; margin-right: 4px; }
 .tag.card { background: #3c7fc0; }
 .tag.relic { background: #8a5a2b; }
+.tag.monster { background: #a8382f; }
 details summary { cursor: pointer; list-style: none; }
 details summary h2 { display: inline-flex; margin: 0; }
 details[open] summary { margin-bottom: 10px; }

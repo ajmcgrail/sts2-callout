@@ -109,3 +109,43 @@ html, body {
 }
 .star { background: radial-gradient(#fff3a6, #c9a227); border-radius: 30%; }
 .star::after { content: "★"; font-size: 0.7em; margin-left: 1px; }
+
+/* enemies */
+.monster-popup { max-width: 660px; }
+.monster-popup.type-elite { border-color: rgba(255, 140, 60, 0.75); }
+.monster-popup.type-boss { border-color: rgba(255, 80, 70, 0.85); }
+.monster-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 8px; }
+.monster-img { width: 120px; height: 120px; object-fit: contain; flex: none; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.7)); }
+.monster-stats { flex: 1; min-width: 0; font-size: 15px; line-height: 1.4; display: flex; flex-direction: column; gap: 4px; }
+.monster-stats .hp { font-size: 22px; font-weight: 700; color: #ff8a80; }
+.monster-stats .label {
+  font: 600 11px/1 system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--muted); margin-right: 6px;
+}
+.monster-stats .hp .label { font-size: 12px; }
+.asc { color: var(--muted); font-weight: 400; font-size: 0.85em; }
+.moves { display: flex; flex-direction: column; gap: 4px; }
+.move {
+  display: grid; grid-template-columns: minmax(110px, 1.1fr) auto 2fr; gap: 8px; align-items: center;
+  background: rgba(255, 255, 255, 0.05); border-radius: 6px; padding: 5px 8px; font-size: 14px;
+}
+.move-name { font-weight: 700; }
+.intents { display: flex; gap: 3px; flex-wrap: wrap; }
+.intent {
+  font: 600 10px/1 system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em;
+  padding: 3px 5px; border-radius: 4px; background: #5a5262; color: #fff;
+}
+.intent.i-attack { background: #b8382f; }
+.intent.i-defend { background: #2f6fb8; }
+.intent.i-buff { background: #3d8f4a; }
+.intent.i-debuff { background: #7b3fa0; }
+.intent.i-status { background: #6b6b6b; }
+.intent.i-summon { background: #a8742a; }
+.intent.i-heal { background: #2f9a7c; }
+.intent.i-sleep, .intent.i-stun { background: #45507a; }
+.intent.i-escape { background: #8a8a8a; }
+.effects { color: var(--text); }
+.effects .dmg { color: #ff8a80; font-weight: 700; }
+.effects .blk { color: var(--blue); font-weight: 700; }
+.effects .heal { color: var(--green); font-weight: 700; }
+.pow { color: var(--gold); }

@@ -2,10 +2,11 @@
 
 **Hear a Slay the Spire 2 card or relic mentioned, see it on screen.**
 
-StS2 Callout listens to whatever your computer is playing: a Twitch or YouTube stream, a video, or a Discord call. When someone names a card or relic, it pops up in a transparent, click-through overlay:
+StS2 Callout listens to whatever your computer is playing: a Twitch or YouTube stream, a video, or a Discord call. When someone names a card, relic or enemy, it pops up in a transparent, click-through overlay:
 
 - **Cards** show base and **upgraded** versions side by side, with both texts.
 - **Relics** show their icon, rarity, effect and flavor text.
+- **Enemies** show their HP, every move with its intent, damage, block and debuffs, their starting powers, and their attack pattern.
 
 Speech recognition runs entirely on your machine with [whisper.cpp](https://github.com/ggml-org/whisper.cpp). No audio leaves your computer.
 
@@ -17,7 +18,7 @@ Speech recognition runs entirely on your machine with [whisper.cpp](https://gith
 - **Local, offline speech recognition** with whisper.cpp. Choose a model from `tiny.en` up to `large-v3-turbo`.
 - **Phrase detection.** A small voice-activity model splits speech at pauses, so names aren't cut in half.
 - **Forgiving name matching.** Exact names, misspellings ("neutralise"), and names that are garbled but sound right ("aka beco" → Akabeko, "happy flour" → Happy Flower) all match. That helps when people talk over each other.
-- **Data downloaded once.** All cards and relics, with images, come from [Spire Codex](https://spire-codex.com) one time and are cached locally. The API isn't called again unless you ask.
+- **Data downloaded once.** All cards, relics and enemies, with images, come from [Spire Codex](https://spire-codex.com) one time and are cached locally. The API isn't called again unless you ask.
 - **Stable or beta.** Switch **Game data** to *Beta branch* to get the cards, relics and characters from the game's public beta (for example The Fool). Beta-only items get a **BETA** badge.
 - **Adjustable.** Popup duration, repeat cooldown, overlay side and size, a block list, which character's Strike/Defend to show, and the speed/accuracy trade-off.
 
@@ -47,7 +48,7 @@ Download the `.dmg`. The app isn't notarized, so right-click it → **Open** the
 
 1. Start the app. The control panel opens, and the card and relic data downloads once.
 2. Click **Start listening**. The first time, this downloads the speech model (about 180 MB) and a 1 MB voice-activity model.
-3. Play a stream or video. Cards and relics appear on the right side of your main screen as they're mentioned.
+3. Play a stream or video. Cards, relics and enemies appear on the right side of your main screen as they're mentioned.
 
 ## Using it
 
@@ -72,6 +73,16 @@ The **control panel** is a normal window. The **overlay** is a borderless, alway
 | Card: base and upgraded | Relic |
 |---|---|
 | ![Card popup](docs/screenshots/overlay-card.png) | ![Relic popup](docs/screenshots/overlay-relic.png) |
+
+**Enemies:**
+
+![Enemy popups: Exoskeleton and Aeonglass](docs/screenshots/enemies.png)
+
+- **HP**, with the Ascension value in brackets when it's different. For example, "512 (A 535)".
+- **Starts with:** powers the enemy has at the start of combat, such as Artifact 3.
+- **Pattern:** the order of its moves, e.g. "Ebb → Eye Lasers → Increasing Intensity → repeat", or which moves it picks between at random.
+- **Moves:** one row per move, with its intent (Attack, Defend, Buff, Debuff, Status…), damage (×hits, Ascension in brackets), block, heal, and the powers it applies ("Weak 2 on you", "Strength 3").
+- Elites have an orange border and bosses a red one. Variants like "Leaf Slime (M)" also match when someone just says "leaf slime".
 
 Each popup shows what was heard (top right) and fades out after the popup duration. Saying the same name again moves it to the top instead of duplicating it. When the column is full, the oldest popup makes room.
 
@@ -104,7 +115,7 @@ Each popup shows what was heard (top right) and fades out after the popup durati
 | Silence threshold | Quieter audio is skipped to save CPU |
 | Prefer character | Which character's version to show for shared names like Strike and Defend |
 | Ignore 1-word names shorter than | Fewer false hits on short everyday words like "Burn", "Rage" or "Feed" |
-| Cards / Relics | What to look for |
+| Cards / Relics / Enemies | What to look for |
 | Fuzzy matching | Match misheard and sound-alike names (see [How matching works](#how-matching-works)) |
 | Split speech at pauses | Use the voice-activity model. If off, fixed overlapping chunks are used. |
 | Never show these names | Your own block list, one name per line |
@@ -129,7 +140,7 @@ flowchart LR
 2. **Resample.** Audio is converted to 16 kHz mono with a windowed-sinc filter, so music and high-frequency noise don't alias into the speech band.
 3. **Find phrases.** The [Silero](https://github.com/snakers4/silero-vad) voice-activity model, run through whisper.cpp, finds where speech starts and stops. A phrase is sent to the recognizer after a 0.5 s pause, or at a natural gap once it reaches the max phrase length.
 4. **Recognize.** [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (via [whisper-rs](https://github.com/tazz4843/whisper-rs)) turns each phrase into text. If it's unsure (low word confidence, typical when people talk over each other) and there's time, it decodes the phrase a second time with beam search and checks both versions for names.
-5. **Match.** The transcript is matched against every card and relic name (see below).
+5. **Match.** The transcript is matched against every card, relic and enemy name (see below).
 6. **Show.** Matches are sent to the overlay window, which loads images from the local cache through a custom `stsimg://` protocol.
 
 ### How matching works
@@ -144,9 +155,9 @@ On a set of ordinary streamer chatter ("path to the elite", "smith at the rest s
 
 ### Data and caching
 
-On first launch the app makes two API calls, `GET /api/cards` and `GET /api/relics`, to [Spire Codex](https://spire-codex.com), and stores the responses. In the background it then downloads every card render (base and upgraded), card art and relic icon once. After that everything is served from disk. **Re-download data** fetches it again after a game patch, including the images, since card renders show the numbers. Speech models are downloaded once from Hugging Face.
+On first launch the app makes three API calls, `GET /api/cards`, `GET /api/relics` and `GET /api/monsters`, to [Spire Codex](https://spire-codex.com), and stores the responses. In the background it then downloads every card render (base and upgraded), card art, relic icon and enemy image once. After that everything is served from disk. **Re-download data** fetches it again after a game patch, including the images, since card renders show the numbers. Speech models are downloaded once from Hugging Face.
 
-**Beta branch.** With **Game data** set to *Beta branch*, the same calls are made once with `?channel=beta`, plus `GET /api/beta/version` to show which beta it is (e.g. "Beta v0.113.0" in the control panel). Beta data and images are cached in their own `data-beta/` and `images-beta/` folders. If Spire Codex has no beta image for a card or relic that also exists in the stable game, the stable art or icon is used. When a new beta comes out, click **Re-download data** while on the beta setting.
+**Beta branch.** With **Game data** set to *Beta branch*, the same calls are made once with `?channel=beta`, plus `GET /api/beta/version` to show which beta it is (e.g. "Beta v0.113.0" in the control panel). Beta data and images are cached in their own `data-beta/` and `images-beta/` folders. If Spire Codex has no beta image for a card, relic or enemy that also exists in the stable game, the stable image is used. When a new beta comes out, click **Re-download data** while on the beta setting.
 
 | OS      | Cache folder |
 |---------|------|

@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::http::{Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
-use data::{Card, CachedImage, Channel, GameData, ImageKind, Relic};
+use data::{Card, CachedImage, Channel, GameData, ImageKind, Monster, Relic};
 use matcher::{ItemRef, Kind, Match, Matcher};
 use settings::Settings;
 
@@ -97,6 +97,7 @@ struct ShowPayload<'a> {
     heard: &'a str,
     card: Option<&'a Card>,
     relic: Option<&'a Relic>,
+    monster: Option<&'a Monster>,
     display_secs: f32,
     max_onscreen: usize,
     scale: f32,
@@ -109,11 +110,12 @@ pub(crate) fn emit_show(app: &AppHandle, item: &ItemRef, heard: &str) -> bool {
     let state = app.state::<AppState>();
     let Some(data) = state.data.read().clone() else { return false };
     let s = state.settings.lock().clone();
-    let (card, relic) = match item.kind {
-        Kind::Card => (data.card(&item.id), None),
-        Kind::Relic => (None, data.relic(&item.id)),
+    let (card, relic, monster) = match item.kind {
+        Kind::Card => (data.card(&item.id), None, None),
+        Kind::Relic => (None, data.relic(&item.id), None),
+        Kind::Monster => (None, None, data.monster(&item.id)),
     };
-    if card.is_none() && relic.is_none() {
+    if card.is_none() && relic.is_none() && monster.is_none() {
         return false;
     }
     let payload = ShowPayload {
@@ -122,6 +124,7 @@ pub(crate) fn emit_show(app: &AppHandle, item: &ItemRef, heard: &str) -> bool {
         heard,
         card,
         relic,
+        monster,
         display_secs: s.display_secs,
         max_onscreen: s.max_onscreen.max(1),
         scale: s.overlay_scale,
@@ -348,7 +351,13 @@ fn search(state: State<'_, AppState>, query: String) -> Vec<SearchHit> {
         name: r.name.clone(),
         detail: format!("{} · {}", r.rarity, r.pool),
     });
-    cards.chain(relics).take(40).collect()
+    let monsters = data.monsters.iter().filter(|m| matcher::normalize(&m.name).contains(&q)).map(|m| SearchHit {
+        kind: Kind::Monster,
+        id: m.id.clone(),
+        name: m.name.clone(),
+        detail: m.rest.get("type").and_then(|t| t.as_str()).unwrap_or("Enemy").to_string(),
+    });
+    cards.chain(relics).chain(monsters).take(40).collect()
 }
 
 #[tauri::command]

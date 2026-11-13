@@ -187,7 +187,7 @@ $("search").addEventListener("input", (e) => {
     ul.innerHTML = "";
     for (const h of hits) {
       const li = document.createElement("li");
-      li.innerHTML = `<span class="tag ${h.kind}">${h.kind}</span> ${esc(h.name)} <span class="muted">${esc(h.detail)}</span>`;
+      li.innerHTML = `<span class="tag ${h.kind}">${h.kind === "monster" ? "enemy" : h.kind}</span> ${esc(h.name)} <span class="muted">${esc(h.detail)}</span>`;
       li.onclick = () => invoke("show_item", { kind: h.kind, id: h.id });
       ul.append(li);
     }
@@ -199,8 +199,8 @@ listen<{ text: string; matches: string[]; took_ms: number; audio_ms: number; ret
   addLog(`${highlight(payload.text, payload.matches)} <span class="muted">${timing}</span>`, payload.matches.length ? "hit" : "");
 });
 listen<ShowPayload>("show-item", ({ payload }) => {
-  const name = payload.card?.name ?? payload.relic?.name ?? payload.id;
-  addLog(`→ showing <b>${esc(name)}</b> (${payload.kind})`, "show");
+  const name = payload.card?.name ?? payload.relic?.name ?? payload.monster?.name ?? payload.id;
+  addLog(`→ showing <b>${esc(name)}</b> (${payload.kind === "monster" ? "enemy" : payload.kind})`, "show");
 });
 listen<string>("status", ({ payload }) => addLog(esc(payload), "sys"));
 listen<ListenState>("listen-state", ({ payload }) => renderListen(payload));
