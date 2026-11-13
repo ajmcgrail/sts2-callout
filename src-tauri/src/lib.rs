@@ -14,7 +14,7 @@ use serde::Serialize;
 use tauri::http::{Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 
-use data::{Card, CachedImage, GameData, ImageKind, Relic};
+use data::{Card, CachedImage, Channel, GameData, ImageKind, Relic};
 use matcher::{ItemRef, Kind, Match, Matcher};
 use settings::Settings;
 
@@ -100,6 +100,8 @@ struct ShowPayload<'a> {
     display_secs: f32,
     max_onscreen: usize,
     scale: f32,
+    /// In the beta branch only, not in the released game yet.
+    beta_only: bool,
 }
 
 /// Send an item to the overlay. Returns false if it isn't in the data.
@@ -123,6 +125,7 @@ pub(crate) fn emit_show(app: &AppHandle, item: &ItemRef, heard: &str) -> bool {
         display_secs: s.display_secs,
         max_onscreen: s.max_onscreen.max(1),
         scale: s.overlay_scale,
+        beta_only: data.is_beta_only(&item.id),
     };
     app.emit("show-item", payload).is_ok()
 }
@@ -134,6 +137,9 @@ struct Status {
     relics: usize,
     fetched_at: u64,
     source: String,
+    channel: Option<Channel>,
+    /// Beta branch version, e.g. "v0.113.0".
+    version: Option<String>,
     listen: ListenState,
     cache_dir: String,
     model_present: bool,
@@ -151,6 +157,8 @@ fn get_status(state: State<'_, AppState>) -> Status {
         relics: data.as_ref().map_or(0, |d| d.relics.len()),
         fetched_at: data.as_ref().map_or(0, |d| d.meta.fetched_at),
         source: data.as_ref().map_or_else(String::new, |d| d.meta.source.clone()),
+        channel: data.as_ref().map(|d| d.channel),
+        version: data.as_ref().and_then(|d| d.meta.version.clone()),
         listen,
         cache_dir: state.cache_dir.display().to_string(),
         model_present: stt::model_path(&state.models_dir, &model).exists(),
@@ -175,6 +183,18 @@ fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings)
     let old = std::mem::replace(&mut *state.settings.lock(), settings.clone());
     state.rebuild_matcher();
     place_overlay(&app);
+    if old.data_channel != settings.data_channel {
+        // Uses the cache when it has that channel; downloads it once otherwise.
+        // If a load is already running, it picks up the new channel when done.
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = load_data(&app, false).await {
+                if !e.to_string().contains("already being downloaded") {
+                    let _ = app.emit("status", format!("Could not load game data: {e:#}"));
+                }
+            }
+        });
+    }
     let restart_needed = old.model != settings.model || old.device != settings.device || old.use_vad != settings.use_vad;
     if restart_needed && !matches!(&*state.listen.lock(), Listen::Idle) {
         let _ = app.emit("status", "Stop and start listening again to apply the new audio/model settings");
@@ -346,15 +366,24 @@ async fn load_data(app: &AppHandle, force: bool) -> anyhow::Result<usize> {
     result
 }
 
-async fn load_data_inner(app: &AppHandle, state: &AppState, force: bool) -> anyhow::Result<usize> {
-    let _ = app.emit("status", if force { "Re-downloading game data…" } else { "Loading game data…" });
-    let data = Arc::new(data::load_or_fetch(&state.client, &state.cache_dir, force).await?);
-    let n = data.cards.len() + data.relics.len();
-    *state.data.write() = Some(data.clone());
-    state.rebuild_matcher();
-    let _ = app.emit("data-ready", n);
-    tauri::async_runtime::spawn(prefetch_images(app.clone(), data));
-    Ok(n)
+async fn load_data_inner(app: &AppHandle, state: &AppState, mut force: bool) -> anyhow::Result<usize> {
+    loop {
+        let channel = Channel::parse(&state.settings.lock().data_channel);
+        let what = if channel == Channel::Beta { "beta " } else { "" };
+        let _ = app.emit("status", if force { format!("Re-downloading {what}game data…") } else { format!("Loading {what}game data…") });
+        let data = Arc::new(data::load_or_fetch(&state.client, &state.cache_dir, channel, force).await?);
+        // The user switched channel while this was loading: load that one instead.
+        if Channel::parse(&state.settings.lock().data_channel) != channel {
+            force = false;
+            continue;
+        }
+        let n = data.cards.len() + data.relics.len();
+        *state.data.write() = Some(data.clone());
+        state.rebuild_matcher();
+        let _ = app.emit("data-ready", n);
+        tauri::async_runtime::spawn(prefetch_images(app.clone(), data));
+        return Ok(n);
+    }
 }
 
 /// Warm the image cache in the background so every popup is instant and

@@ -32,6 +32,8 @@ pub struct Settings {
     pub fuzzy: bool,
     pub show_cards: bool,
     pub show_relics: bool,
+    /// "stable" or "beta": which game branch's cards and relics to use.
+    pub data_channel: String,
 }
 
 impl Default for Settings {
@@ -54,6 +56,7 @@ impl Default for Settings {
             fuzzy: true,
             show_cards: true,
             show_relics: true,
+            data_channel: "stable".into(),
         }
     }
 }
@@ -90,6 +93,9 @@ impl Settings {
         self.min_single_word_len = self.min_single_word_len.min(20);
         if !["fast", "balanced", "best"].contains(&self.accuracy.as_str()) {
             self.accuracy = d.accuracy;
+        }
+        if !["stable", "beta"].contains(&self.data_channel.as_str()) {
+            self.data_channel = d.data_channel;
         }
         if !["left", "right"].contains(&self.overlay_side.as_str()) {
             self.overlay_side = d.overlay_side;

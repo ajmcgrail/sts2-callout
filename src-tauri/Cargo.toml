@@ -1,6 +1,6 @@
 [package]
 name = "sts2-callout"
-version = "0.1.0"
+version = "0.2.0"
 description = "Listens to speaker output and flashes Slay the Spire 2 cards/relics that get mentioned"
 edition = "2021"
 

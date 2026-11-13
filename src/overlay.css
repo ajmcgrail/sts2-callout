@@ -44,6 +44,10 @@ html, body {
 .head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 8px; }
 .head .name { font-size: 24px; font-weight: 700; color: var(--gold); text-shadow: 0 2px 0 #000; }
 .head .meta { font-size: 14px; color: var(--muted); }
+.head .badge {
+  font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.08em; color: #1b1310;
+  background: var(--gold); border-radius: 4px; padding: 3px 6px; align-self: center;
+}
 .head .heard { margin-left: auto; font-size: 12px; color: var(--muted); font-style: italic; }
 
 .pair { display: flex; gap: 12px; justify-content: center; }
@@ -69,6 +73,7 @@ html, body {
 .built.color-defect { border-color: #3c7fc0; }
 .built.color-necrobinder { border-color: #b46fb8; }
 .built.color-regent { border-color: #d39a35; }
+.built.color-fool { border-color: #e6cf3c; }
 .built .cost {
   position: absolute; top: -8px; left: -8px; width: 38px; height: 38px; border-radius: 50%;
   background: radial-gradient(#ffd56a, #c46a12); color: #fff; font-weight: 700; font-size: 22px;

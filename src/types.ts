@@ -36,6 +36,8 @@ export interface ShowPayload {
   display_secs: number;
   max_onscreen: number;
   scale: number;
+  /** Only in the beta branch so far. */
+  beta_only: boolean;
 }
 
 export interface Settings {
@@ -56,6 +58,7 @@ export interface Settings {
   fuzzy: boolean;
   show_cards: boolean;
   show_relics: boolean;
+  data_channel: "stable" | "beta";
 }
 
 export interface Status {
@@ -64,6 +67,8 @@ export interface Status {
   relics: number;
   fetched_at: number;
   source: string;
+  channel: "stable" | "beta" | null;
+  version: string | null;
   listen: ListenState;
   cache_dir: string;
   model_present: boolean;

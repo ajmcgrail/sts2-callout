@@ -17,7 +17,8 @@ Speech recognition runs entirely on your machine with [whisper.cpp](https://gith
 - **Local, offline speech recognition** with whisper.cpp. Choose a model from `tiny.en` up to `large-v3-turbo`.
 - **Phrase detection.** A small voice-activity model splits speech at pauses, so names aren't cut in half.
 - **Forgiving name matching.** Exact names, misspellings ("neutralise"), and names that are garbled but sound right ("aka beco" → Akabeko, "happy flour" → Happy Flower) all match. That helps when people talk over each other.
-- **Data downloaded once.** All 577 cards and 296 relics, with images, come from [Spire Codex](https://spire-codex.com) one time and are cached locally. The API isn't called again unless you ask.
+- **Data downloaded once.** All cards and relics, with images, come from [Spire Codex](https://spire-codex.com) one time and are cached locally. The API isn't called again unless you ask.
+- **Stable or beta.** Switch **Game data** to *Beta branch* to get the cards, relics and characters from the game's public beta (for example The Fool). Beta-only items get a **BETA** badge.
 - **Adjustable.** Popup duration, repeat cooldown, overlay side and size, a block list, which character's Strike/Defend to show, and the speed/accuracy trade-off.
 
 ## Getting started
@@ -74,7 +75,11 @@ The **control panel** is a normal window. The **overlay** is a borderless, alway
 
 Each popup shows what was heard (top right) and fades out after the popup duration. Saying the same name again moves it to the top instead of duplicating it. When the column is full, the oldest popup makes room.
 
-> The screenshots were taken on Linux without access to Spire Codex's card images, so the cards use the app's built-in card layout with the card art. Normally the game's own rendered cards from Spire Codex are shown, and the built-in layout is only a fallback.
+**Beta branch:** with **Game data** set to *Beta branch*, items that exist only in the beta (here The Fool's cards) carry a **BETA** badge:
+
+![Beta-only cards with the BETA badge](docs/screenshots/beta.png)
+
+> The screenshots were taken on Linux without access to Spire Codex's card images, so the cards use the app's built-in card layout with the card art. Normally the game's own rendered cards from Spire Codex are shown, and the built-in layout is only a fallback. The beta cards above have no art because the test server had no beta images.
 
 ### Try it without audio
 
@@ -89,6 +94,7 @@ Each popup shows what was heard (top right) and fades out after the popup durati
 
 | Setting | What it does |
 |---|---|
+| Game data | **Stable** (the released game) or **Beta branch** (the public beta, including new cards, relics and characters). Each is downloaded once and cached separately, so switching back and forth is instant after the first time. |
 | Popup duration | How long a popup stays on screen |
 | Don't repeat within | Cooldown before the same card or relic pops up again |
 | Max popups on screen | Older popups are dismissed first. Popups that don't fit the screen height are dropped too. |
@@ -138,7 +144,9 @@ On a set of ordinary streamer chatter ("path to the elite", "smith at the rest s
 
 ### Data and caching
 
-On first launch the app makes two API calls, `GET /api/cards` and `GET /api/relics`, to [Spire Codex](https://spire-codex.com), and stores the responses. In the background it then downloads every card render (base and upgraded), card art and relic icon once. After that everything is served from disk. **Re-download data** fetches it again after a game patch. Speech models are downloaded once from Hugging Face.
+On first launch the app makes two API calls, `GET /api/cards` and `GET /api/relics`, to [Spire Codex](https://spire-codex.com), and stores the responses. In the background it then downloads every card render (base and upgraded), card art and relic icon once. After that everything is served from disk. **Re-download data** fetches it again after a game patch, including the images, since card renders show the numbers. Speech models are downloaded once from Hugging Face.
+
+**Beta branch.** With **Game data** set to *Beta branch*, the same calls are made once with `?channel=beta`, plus `GET /api/beta/version` to show which beta it is (e.g. "Beta v0.113.0" in the control panel). Beta data and images are cached in their own `data-beta/` and `images-beta/` folders. If Spire Codex has no beta image for a card or relic that also exists in the stable game, the stable art or icon is used. When a new beta comes out, click **Re-download data** while on the beta setting.
 
 | OS      | Cache folder |
 |---------|------|

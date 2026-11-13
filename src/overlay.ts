@@ -55,10 +55,11 @@ function hasUpgrade(c: Card): boolean {
     (c.upgrade_description && c.upgrade_description !== c.description));
 }
 
-function cardPopup(c: Card, heard: string): HTMLElement {
+function cardPopup(c: Card, heard: string, beta: boolean): HTMLElement {
   const box = el("div", `popup card-popup color-${c.color.toLowerCase()}`);
   const head = el("div", "head");
   head.append(el("span", "name", c.name), el("span", "meta", `${titleCase(c.color)} · ${c.rarity} ${c.type}`));
+  if (beta) head.append(el("span", "badge", "BETA"));
   if (heard) head.append(el("span", "heard", `“${heard}”`));
   box.append(head);
 
@@ -77,7 +78,7 @@ function cardPopup(c: Card, heard: string): HTMLElement {
   return box;
 }
 
-function relicPopup(r: Relic, heard: string): HTMLElement {
+function relicPopup(r: Relic, heard: string, beta: boolean): HTMLElement {
   const box = el("div", "popup relic-popup");
   const icon = el("img", "relic-icon");
   icon.src = imageUrl("relic", r.id);
@@ -86,6 +87,7 @@ function relicPopup(r: Relic, heard: string): HTMLElement {
   const body = el("div", "relic-body");
   const head = el("div", "head");
   head.append(el("span", "name", r.name), el("span", "meta", `${r.rarity} · ${titleCase(r.pool)}`));
+  if (beta) head.append(el("span", "badge", "BETA"));
   if (heard) head.append(el("span", "heard", `“${heard}”`));
   body.append(head, el("div", "desc", renderMarkup(r.description)));
   if (r.flavor && !/revealed in the future/i.test(r.flavor)) body.append(el("div", "flavor", renderMarkup(r.flavor)));
@@ -120,7 +122,7 @@ listen<ShowPayload>("show-item", ({ payload: s }) => {
     arm(existing, s.display_secs);
     return;
   }
-  const p = s.card ? cardPopup(s.card, s.heard) : s.relic ? relicPopup(s.relic, s.heard) : null;
+  const p = s.card ? cardPopup(s.card, s.heard, s.beta_only) : s.relic ? relicPopup(s.relic, s.heard, s.beta_only) : null;
   if (!p) return;
   p.dataset.key = key;
   stack.prepend(p);

@@ -6,7 +6,9 @@
 //!   data/meta.json                      when/where the data came from
 //!   images/<kind>/<ID>.<ext>            downloaded images
 //!   images/<kind>/<ID>.missing          marker: the server had no such image
+//!   data-beta/, images-beta/            the same for the beta branch
 
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,15 +62,57 @@ pub struct Relic {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct Meta {
     pub fetched_at: u64,
     pub source: String,
+    /// Beta branch version, e.g. "v0.113.0" (beta channel only).
+    pub version: Option<String>,
 }
 
+/// Which branch of the game the data describes. Spire Codex serves the
+/// public beta branch with `?channel=beta`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    #[default]
+    Stable,
+    Beta,
+}
+
+impl Channel {
+    pub fn parse(s: &str) -> Self {
+        if s == "beta" {
+            Self::Beta
+        } else {
+            Self::Stable
+        }
+    }
+    /// Each channel has its own data and image cache.
+    fn data_dir(self) -> &'static str {
+        match self {
+            Self::Stable => "data",
+            Self::Beta => "data-beta",
+        }
+    }
+    fn images_dir(self) -> &'static str {
+        match self {
+            Self::Stable => "images",
+            Self::Beta => "images-beta",
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct GameData {
     pub cards: Vec<Card>,
     pub relics: Vec<Relic>,
     pub meta: Meta,
+    pub channel: Channel,
+    /// Beta only: stable art/icon URLs by "kind:id", tried when a beta image is missing.
+    pub stable_images: HashMap<String, String>,
+    /// Beta only: ids of cards and relics that aren't in the stable game yet.
+    pub beta_only: HashSet<String>,
 }
 
 impl GameData {
@@ -79,15 +123,29 @@ impl GameData {
         self.relics.iter().find(|r| r.id == id)
     }
 
-    /// Remote URL for an image kind served by our `stsimg://` protocol.
-    pub fn image_url(&self, kind: ImageKind, id: &str) -> Option<String> {
-        let url = match kind {
-            ImageKind::Card => self.card(id)?.image_url_card.clone(),
-            ImageKind::CardUpg => self.card(id)?.image_url_card_upg.clone(),
-            ImageKind::CardArt => self.card(id)?.image_url.clone(),
-            ImageKind::Relic => self.relic(id)?.image_url.clone(),
-        }?;
-        Some(absolute_url(&url))
+    /// Remote URLs to try, in order, for an image served by our `stsimg://`
+    /// protocol. Beta art and icons fall back to the stable image of the same
+    /// card/relic. Full card renders don't: a stable render could show
+    /// numbers the beta changed, and the overlay's own layout is better then.
+    pub fn image_urls(&self, kind: ImageKind, id: &str) -> Vec<String> {
+        let own = match kind {
+            ImageKind::Card => self.card(id).and_then(|c| c.image_url_card.clone()),
+            ImageKind::CardUpg => self.card(id).and_then(|c| c.image_url_card_upg.clone()),
+            ImageKind::CardArt => self.card(id).and_then(|c| c.image_url.clone()),
+            ImageKind::Relic => self.relic(id).and_then(|r| r.image_url.clone()),
+        };
+        let mut urls: Vec<String> = own.iter().map(|u| absolute_url(u)).collect();
+        if let Some(stable) = self.stable_images.get(&format!("{}:{id}", kind.dir())) {
+            let stable = absolute_url(stable);
+            if !urls.contains(&stable) {
+                urls.push(stable);
+            }
+        }
+        urls
+    }
+
+    pub fn is_beta_only(&self, id: &str) -> bool {
+        self.beta_only.contains(id)
     }
 
     /// Every image the overlay can ask for, used to warm the cache.
@@ -153,50 +211,97 @@ pub fn http_client() -> reqwest::Client {
         .expect("http client")
 }
 
-/// Load the cached data, hitting the API only if there is no cache yet
-/// (or `force` is set by an explicit "refresh" from the user).
-pub async fn load_or_fetch(client: &reqwest::Client, cache: &Path, force: bool) -> Result<GameData> {
-    let dir = cache.join("data");
+/// Load the cached data for `channel`, hitting the API only if there is no
+/// cache yet (or `force` is set by an explicit "refresh" from the user).
+/// For the beta channel the stable data is loaded too (from cache, or fetched
+/// once) to fill in missing beta images and to tell which items are beta-only.
+pub async fn load_or_fetch(client: &reqwest::Client, cache: &Path, channel: Channel, force: bool) -> Result<GameData> {
+    let mut data = load_channel(client, cache, channel, force).await?;
+    if channel == Channel::Beta {
+        match load_channel(client, cache, Channel::Stable, false).await {
+            Ok(stable) => {
+                for c in &stable.cards {
+                    if let Some(u) = &c.image_url {
+                        data.stable_images.insert(format!("card_art:{}", c.id), u.clone());
+                    }
+                }
+                for r in &stable.relics {
+                    if let Some(u) = &r.image_url {
+                        data.stable_images.insert(format!("relic:{}", r.id), u.clone());
+                    }
+                }
+                let known: HashSet<&str> =
+                    stable.cards.iter().map(|c| c.id.as_str()).chain(stable.relics.iter().map(|r| r.id.as_str())).collect();
+                data.beta_only = data
+                    .cards
+                    .iter()
+                    .map(|c| c.id.as_str())
+                    .chain(data.relics.iter().map(|r| r.id.as_str()))
+                    .filter(|id| !known.contains(id))
+                    .map(str::to_string)
+                    .collect();
+            }
+            Err(e) => log::warn!("stable data unavailable for beta image fallback: {e:#}"),
+        }
+    }
+    Ok(data)
+}
+
+async fn load_channel(client: &reqwest::Client, cache: &Path, channel: Channel, force: bool) -> Result<GameData> {
+    let dir = cache.join(channel.data_dir());
     let cards_path = dir.join("cards.json");
     let relics_path = dir.join("relics.json");
     let meta_path = dir.join("meta.json");
 
     if !force && cards_path.exists() && relics_path.exists() {
-        if let Ok(data) = read_cached(&cards_path, &relics_path, &meta_path) {
+        if let Ok(data) = read_cached(&cards_path, &relics_path, &meta_path, channel) {
             return Ok(data);
         }
-        log::warn!("cached data unreadable, refetching");
+        log::warn!("cached {channel:?} data unreadable, refetching");
     }
 
     tokio::fs::create_dir_all(&dir).await?;
     let base = api_base();
-    let cards_raw = fetch_text(client, &format!("{base}/api/cards?lang=eng")).await?;
-    let relics_raw = fetch_text(client, &format!("{base}/api/relics?lang=eng")).await?;
+    let query = match channel {
+        Channel::Stable => "lang=eng",
+        Channel::Beta => "lang=eng&channel=beta",
+    };
+    let cards_raw = fetch_text(client, &format!("{base}/api/cards?{query}")).await?;
+    let relics_raw = fetch_text(client, &format!("{base}/api/relics?{query}")).await?;
     // Validate before overwriting a good cache.
     serde_json::from_str::<Vec<Card>>(&cards_raw).context("unexpected /api/cards response")?;
     serde_json::from_str::<Vec<Relic>>(&relics_raw).context("unexpected /api/relics response")?;
+    let version = match channel {
+        Channel::Stable => None,
+        Channel::Beta => fetch_text(client, &format!("{base}/api/beta/version"))
+            .await
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .and_then(|v| v.get("beta_version")?.as_str().map(str::to_string)),
+    };
     let meta = Meta {
         fetched_at: SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0),
         source: base,
+        version,
     };
     write_atomic(&cards_path, cards_raw.as_bytes()).await?;
     write_atomic(&relics_path, relics_raw.as_bytes()).await?;
     write_atomic(&meta_path, serde_json::to_vec_pretty(&meta)?.as_slice()).await?;
     if force {
-        // Data changed: drop "missing" markers so new images get a chance.
-        clear_missing_markers(&cache.join("images"));
+        // New game data: card renders show its numbers, so refetch every image.
+        let _ = tokio::fs::remove_dir_all(cache.join(channel.images_dir())).await;
     }
-    read_cached(&cards_path, &relics_path, &meta_path)
+    read_cached(&cards_path, &relics_path, &meta_path, channel)
 }
 
-fn read_cached(cards: &Path, relics: &Path, meta: &Path) -> Result<GameData> {
+fn read_cached(cards: &Path, relics: &Path, meta: &Path, channel: Channel) -> Result<GameData> {
     let cards: Vec<Card> = serde_json::from_slice(&std::fs::read(cards)?)?;
     let relics: Vec<Relic> = serde_json::from_slice(&std::fs::read(relics)?)?;
     let meta = std::fs::read(meta)
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or_default();
-    Ok(GameData { cards, relics, meta })
+    Ok(GameData { cards, relics, meta, channel, stable_images: HashMap::new(), beta_only: HashSet::new() })
 }
 
 async fn fetch_text(client: &reqwest::Client, url: &str) -> Result<String> {
@@ -221,18 +326,6 @@ pub async fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn clear_missing_markers(images: &Path) {
-    let Ok(kinds) = std::fs::read_dir(images) else { return };
-    for kind in kinds.flatten() {
-        let Ok(files) = std::fs::read_dir(kind.path()) else { continue };
-        for f in files.flatten() {
-            if f.path().extension().is_some_and(|e| e == "missing") {
-                let _ = std::fs::remove_file(f.path());
-            }
-        }
-    }
 }
 
 pub enum CachedImage {
@@ -262,24 +355,28 @@ pub async fn get_image(
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         return Err(anyhow!("bad id"));
     }
-    let dir = cache.join("images").join(kind.dir());
+    let dir = cache.join(data.channel.images_dir()).join(kind.dir());
     if let Some(hit) = find_cached(&dir, id) {
         return Ok(hit);
     }
     tokio::fs::create_dir_all(&dir).await?;
-    let Some(url) = data.image_url(kind, id) else {
+    let mut found = None;
+    for url in data.image_urls(kind, id) {
+        let resp = client.get(&url).send().await?;
+        // Only a definite "doesn't exist" moves on; 403/5xx may be temporary.
+        if resp.status() == reqwest::StatusCode::NOT_FOUND || resp.status() == reqwest::StatusCode::GONE {
+            continue;
+        }
+        if !resp.status().is_success() {
+            return Err(anyhow!("GET {url}: HTTP {}", resp.status()));
+        }
+        found = Some((url, resp));
+        break;
+    }
+    let Some((url, resp)) = found else {
         tokio::fs::write(dir.join(format!("{id}.missing")), b"").await?;
         return Ok(CachedImage::Missing);
     };
-    let resp = client.get(&url).send().await?;
-    // Only a definite "doesn't exist" is remembered; 403/5xx may be temporary.
-    if resp.status() == reqwest::StatusCode::NOT_FOUND || resp.status() == reqwest::StatusCode::GONE {
-        tokio::fs::write(dir.join(format!("{id}.missing")), b"").await?;
-        return Ok(CachedImage::Missing);
-    }
-    if !resp.status().is_success() {
-        return Err(anyhow!("GET {url}: HTTP {}", resp.status()));
-    }
     let bytes = resp.bytes().await?;
     let ext = sniff_ext(&bytes).unwrap_or_else(|| {
         url.rsplit('.').next().filter(|e| e.len() <= 4).unwrap_or("webp")
@@ -360,5 +457,33 @@ pub async fn download_file(
             let _ = tokio::fs::remove_file(&tmp).await;
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn beta_images_fall_back_to_stable_art_but_not_renders() {
+        let card = Card {
+            id: "BASH".into(),
+            image_url: Some("/static/images/beta/v1/cards/bash.webp".into()),
+            image_url_card: Some("https://cdn.example/cards-full/beta/v1/bash.webp".into()),
+            ..Default::default()
+        };
+        let mut data = GameData { cards: vec![card], channel: Channel::Beta, ..Default::default() };
+        data.stable_images.insert("card_art:BASH".into(), "/static/images/cards/bash.webp".into());
+        data.beta_only.insert("NEW_CARD".into());
+
+        let art = data.image_urls(ImageKind::CardArt, "BASH");
+        assert_eq!(art.len(), 2);
+        assert!(art[0].ends_with("/static/images/beta/v1/cards/bash.webp"));
+        assert!(art[1].ends_with("/static/images/cards/bash.webp"));
+        assert_eq!(data.image_urls(ImageKind::Card, "BASH"), ["https://cdn.example/cards-full/beta/v1/bash.webp"]);
+        assert!(data.image_urls(ImageKind::Relic, "NOPE").is_empty());
+        assert!(data.is_beta_only("NEW_CARD") && !data.is_beta_only("BASH"));
+        assert_eq!(Channel::parse("beta"), Channel::Beta);
+        assert_eq!(Channel::parse("anything"), Channel::Stable);
     }
 }

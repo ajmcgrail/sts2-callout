@@ -39,7 +39,8 @@ async function refreshStatus() {
   const pill = $("data-status");
   if (st.data_loaded) {
     const when = st.fetched_at ? new Date(st.fetched_at * 1000).toLocaleDateString() : "unknown date";
-    pill.textContent = `${st.cards} cards · ${st.relics} relics · cached ${when}`;
+    const beta = st.channel === "beta" ? ` · Beta${st.version ? ` ${st.version}` : ""}` : "";
+    pill.textContent = `${st.cards} cards · ${st.relics} relics${beta} · cached ${when}`;
     pill.className = "pill ok";
   } else {
     pill.textContent = "No data yet";

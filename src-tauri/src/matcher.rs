@@ -283,7 +283,7 @@ impl Matcher {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data::{Card, GameData, Meta, Relic};
+    use crate::data::{Card, GameData, Relic};
 
     fn card(id: &str, name: &str, color: &str, order: i64) -> Card {
         Card { id: id.into(), name: name.into(), color: color.into(), compendium_order: order, ..Default::default() }
@@ -307,7 +307,7 @@ mod tests {
                 relic("ANCHOR_Q", "Anchor???"),
                 relic("PANDORAS_BOX", "Pandora's Box"),
             ],
-            meta: Meta::default(),
+            ..Default::default()
         }
     }
     fn ids(ms: &[Match]) -> Vec<&str> {
@@ -374,7 +374,7 @@ mod real_data {
         let data = GameData {
             cards: serde_json::from_slice(&std::fs::read(dir.join("cards.json")).unwrap()).unwrap(),
             relics: serde_json::from_slice(&std::fs::read(dir.join("relics.json")).unwrap()).unwrap(),
-            meta: Default::default(),
+            ..Default::default()
         };
         let m = Matcher::new(&data, &Settings::default());
         if let Ok(corpus) = std::env::var("STS2_CORPUS") {
